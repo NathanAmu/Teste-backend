@@ -7,7 +7,7 @@ import os
 app = Flask(__name__)
 
 # Configuração do banco de dados
-DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://postgres:[YOUR-PASSWORD]@db.wekvcdbfakqkqreltclx.supabase.co:5432/postgres")
+DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://postgres:Juliano@1@db.wekvcdbfakqkqreltclx.supabase.co:5432/postgres")
 app.config['SQLALCHEMY_DATABASE_URI'] = DATABASE_URL
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
