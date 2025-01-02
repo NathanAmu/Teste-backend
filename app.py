@@ -1,81 +1,58 @@
-import sqlite3
-from flask import Flask, jsonify, request
-from flask_cors import CORS
+# app.py - Backend
+
+from flask import Flask, request, jsonify
+from flask_sqlalchemy import SQLAlchemy
+import os
 
 app = Flask(__name__)
-CORS(app)
 
-def init_db():
-    try:
-        conn = sqlite3.connect('estoque.db')
-        cursor = conn.cursor()
-        cursor.execute('CREATE TABLE IF NOT EXISTS estoque (id INTEGER PRIMARY KEY, quantidade INTEGER)')
-        cursor.execute('INSERT OR IGNORE INTO estoque (id, quantidade) VALUES (1, 10)')
-        conn.commit()
-        conn.close()
-        print("Banco de dados inicializado com sucesso!")
-    except Exception as e:
-        print(f"Erro ao inicializar o banco de dados: {e}")
+# Configuração do banco de dados
+DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://postgres:[YOUR-PASSWORD]@db.wekvcdbfakqkqreltclx.supabase.co:5432/postgres")
+app.config['SQLALCHEMY_DATABASE_URI'] = DATABASE_URL
+app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
-@app.route('/api/estoque', methods=['GET'])
-def obter_estoque():
-    try:
-        conn = sqlite3.connect('estoque.db')
-        cursor = conn.cursor()
-        cursor.execute('SELECT quantidade FROM estoque WHERE id = 1')
-        quantidade = cursor.fetchone()[0]
-        conn.close()
-        return jsonify({"quantidade": quantidade})
-    except Exception as e:
-        print(f"Erro ao obter estoque: {e}")
-        return jsonify({"error": "Erro ao obter estoque!"}), 500
+db = SQLAlchemy(app)
 
-@app.route('/api/comprar', methods=['POST'])
-def comprar_produto():
-    try:
-        conn = sqlite3.connect('estoque.db')
-        cursor = conn.cursor()
-        cursor.execute('SELECT quantidade FROM estoque WHERE id = 1')
-        quantidade = cursor.fetchone()[0]
+# Modelo da tabela produtos
+class Produto(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    nome = db.Column(db.String(255), nullable=False)
+    quantidade = db.Column(db.Integer, nullable=False)
 
-        if quantidade > 0:
-            nova_quantidade = quantidade - 1
-            cursor.execute('UPDATE estoque SET quantidade = ? WHERE id = 1', (nova_quantidade,))
-            conn.commit()
-            conn.close()
-            return jsonify({"success": True, "estoque": nova_quantidade})
-        else:
-            conn.close()
-            return jsonify({"success": False, "message": "Estoque esgotado!"}), 400
-    except Exception as e:
-        print(f"Erro ao processar compra: {e}")
-        return jsonify({"error": "Erro ao processar compra!"}), 500
+@app.route('/estoque', methods=['GET'])
+def listar_estoque():
+    produtos = Produto.query.all()
+    estoque = [{"id": p.id, "nome": p.nome, "quantidade": p.quantidade} for p in produtos]
+    return jsonify(estoque)
 
-@app.route('/api/adicionar', methods=['POST'])
+@app.route('/comprar/<int:produto_id>', methods=['POST'])
+def comprar(produto_id):
+    produto = Produto.query.get(produto_id)
+    if not produto:
+        return jsonify({"erro": "Produto não encontrado"}), 404
+
+    if produto.quantidade > 0:
+        produto.quantidade -= 1
+        db.session.commit()
+        return jsonify({"mensagem": "Compra realizada com sucesso"})
+    else:
+        return jsonify({"erro": "Produto esgotado"}), 400
+
+@app.route('/adicionar', methods=['POST'])
 def adicionar_estoque():
-    try:
-        dados = request.json
-        quantidade_para_adicionar = dados.get('quantidade', 0)
+    dados = request.json
+    nome = dados.get("nome")
+    quantidade = dados.get("quantidade")
 
-        if quantidade_para_adicionar <= 0:
-            return jsonify({"success": False, "message": "Quantidade inválida para adicionar!"}), 400
+    if not nome or not isinstance(quantidade, int) or quantidade <= 0:
+        return jsonify({"erro": "Dados inválidos"}), 400
 
-        conn = sqlite3.connect('estoque.db')
-        cursor = conn.cursor()
-        cursor.execute('SELECT quantidade FROM estoque WHERE id = 1')
-        quantidade_atual = cursor.fetchone()[0]
-
-        nova_quantidade = quantidade_atual + quantidade_para_adicionar
-        cursor.execute('UPDATE estoque SET quantidade = ? WHERE id = 1', (nova_quantidade,))
-        conn.commit()
-        conn.close()
-
-        return jsonify({"success": True, "estoque": nova_quantidade})
-    except Exception as e:
-        print(f"Erro ao adicionar estoque: {e}")
-        return jsonify({"error": "Erro ao adicionar estoque!"}), 500
+    produto = Produto(nome=nome, quantidade=quantidade)
+    db.session.add(produto)
+    db.session.commit()
+    return jsonify({"mensagem": "Produto adicionado com sucesso"})
 
 if __name__ == '__main__':
-    print("Iniciando servidor...")
-    init_db()
+    with app.app_context():
+        db.create_all()  # Cria as tabelas no banco de dados se não existirem
     app.run(debug=True)
